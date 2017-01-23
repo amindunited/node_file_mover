@@ -4,6 +4,7 @@ const fs = require('fs-extra')
 const FileHound = require('filehound');
 
 class Rearrange {
+
   constructor(config) {
     this.tasks = config.matches;
     this.tasksToRun = this.tasks;
@@ -11,22 +12,27 @@ class Rearrange {
   }
 
   moveFiles(files, task) {
-    console.log('move files got ', files, task.dest);
+    //Keep an array of file that need to be processed
     let filesToMove = files;
+    //Remove the current file from that array
     let oldPath = filesToMove.shift();
-    let newPath = oldPath.replace(/(.*\/)/, task.dest+'/');
 
+    //Remove the leading './' from the paths so that they match the real paths 
+    let src_partial = task.src.replace(/^\.\//, '');
+    let dest_partial = task.dest.replace(/^\.\//, '');
+    let newPath = oldPath.replace(src_partial, dest_partial);
+
+    //Make sure the dedstination directory exists
     if (!fs.existsSync(task.dest)){
       fs.mkdirSync(task.dest);
     }
 
-    console.log('shoudl rename ', oldPath, 'to', newPath);
+    //Wrap the copy task in a promise for flow control
     return new Promise((resolve, reject) => {
-
       fs.copy(oldPath, newPath, (err) => {
         if (err) throw err;
+        //If there are move files to move...call this method again, else resolve
         if (filesToMove.length) {
-          console.log('still have ', filesToMove.length, ' files to move');
           this.moveFiles(filesToMove, task).then(()=>{
             resolve.apply();
           });
@@ -38,17 +44,18 @@ class Rearrange {
   }
 
   search(task) {
+    //Wrap the file search task in a promise for flow control
     return new Promise((resolve, reject)=>{
       FileHound.create()
       .paths(task.src)
       .match(task.match[0])
       .find((err, results) => {
-        console.log('err', err, 'results', results);
         if (!err) {
           this.moveFiles(results, task)
           .then(() => {
-            console.log('in the then')
             resolve.apply();
+          },() => {
+            reject.apply();
           });
         }
       });
@@ -56,9 +63,10 @@ class Rearrange {
   }
 
   run() {
-    console.log('in run', this.tasksToRun[0]);
+    //Remove this task from the tasks array
     this.search(this.tasksToRun.shift())
     .then(()=>{
+      //If there are other tasks to call...call this method again
       if (this.tasksToRun.length) {
         this.run();
       }
@@ -66,6 +74,10 @@ class Rearrange {
   }
 }
 
+/**
+ * Example usage
+ */
+/*
 new Rearrange({
   matches: [
     {
@@ -77,6 +89,12 @@ new Rearrange({
       src: './src',
       match: ['*.js'],
       dest: './dist/scripts'
+    },
+    {
+      src: './src/css',
+      match: ['*.css'],
+      dest: './dist/styles'
     }
   ]
 });
+*/
